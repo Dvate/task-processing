@@ -2,7 +2,7 @@ import { DynamoDB, SQS } from 'aws-sdk';
 const dynamodb = new DynamoDB.DocumentClient();
 const sqs = new SQS();
 
-const TABLE_NAME = process.env.TASKS_TABLE;
+const TABLE_NAME = process.env.TASKS_TABLE_NAME;
 const QUEUE_URL = process.env.TASK_QUEUE_URL;
 
 export async function handler(event) {

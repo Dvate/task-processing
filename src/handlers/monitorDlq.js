@@ -1,7 +1,7 @@
-const AWS = require("aws-sdk");
-const dynamodb = new AWS.DynamoDB.DocumentClient();
+const { DynamoDB } = require("aws-sdk");
+const dynamodb = new DynamoDB.DocumentClient();
 
-const TABLE_NAME = process.env.TASKS_TABLE;
+const TABLE_NAME = process.env.TASKS_TABLE_NAME;
 
 exports.handler = async (event) => {
   for (const record of event.Records) {

@@ -1,0 +1,198 @@
+service: speaknow
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: nodejs22.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 256
+  timeout: 30
+  environment:
+    TASKS_TABLE_NAME: { Ref: TasksTable }
+    FAILURE_RATE: ${env:FAILURE_RATE, '0.3'}
+    MAX_RETRIES: ${env:MAX_RETRIES, '2'}
+    BACKOFF_BASE_SECONDS: ${env:BASE_DELAY_SECONDS, '5'}
+
+functions:
+  submitTask:
+    handler: src/handlers/submitTask.handler
+    role: SubmitTaskRole
+    environment:
+      TASK_QUEUE_URL: { Ref: TaskQueue }
+    events:
+      - httpApi:
+          method: POST
+          path: /tasks
+
+  processTask:
+    handler: src/handlers/processTask.handler
+    role: ProcessTaskRole
+    environment:
+      TASK_QUEUE_URL: { Ref: TaskQueue }
+    events:
+      - sqs:
+          arn: { "Fn::GetAtt": [ "TaskQueue", "Arn" ] }
+          batchSize: 10
+
+  dlqMonitor:
+    handler: src/handlers/dlqMonitor.handler
+    role: DlqMonitorRole
+    events:
+      - sqs:
+          arn: { "Fn::GetAtt": [ "TaskDLQ", "Arn" ] }
+          batchSize: 1
+
+resources:
+  Resources:
+    TasksTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:service}-${sls:stage}-tasks
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: taskId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: taskId
+            KeyType: HASH
+
+    TaskDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-dlq
+        MessageRetentionPeriod: 1209600
+
+    TaskQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-${sls:stage}-queue
+        VisibilityTimeout: 60
+        RedrivePolicy:
+          deadLetterTargetArn: { "Fn::GetAtt": [ "TaskDLQ", "Arn" ] }
+          maxReceiveCount: 3
+
+    SubmitTaskRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ${self:service}-${sls:stage}-submitTask-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: SubmitTaskPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${self:service}-${sls:stage}-submitTask*"
+                - Effect: Allow
+                  Action:
+                    - sqs:SendMessage
+                    - sqs:GetQueueAttributes
+                  Resource:
+                    - { "Fn::GetAtt": [ "TaskQueue", "Arn" ] }
+
+    ProcessTaskRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ${self:service}-${sls:stage}-processTask-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: ProcessTaskPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${self:service}-${sls:stage}-processTask*"
+                - Effect: Allow
+                  Action:
+                    - sqs:ReceiveMessage
+                    - sqs:DeleteMessage
+                    - sqs:ChangeMessageVisibility
+                    - sqs:GetQueueAttributes
+                  Resource:
+                    - { "Fn::GetAtt": [ "TaskQueue", "Arn" ] }
+
+    DlqMonitorRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: ${self:service}-${sls:stage}-dlqMonitor-role
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: lambda.amazonaws.com
+              Action: sts:AssumeRole
+        Policies:
+          - PolicyName: DlqMonitorPolicy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: Allow
+                  Action:
+                    - logs:CreateLogGroup
+                    - logs:CreateLogStream
+                    - logs:PutLogEvents
+                  Resource:
+                    - "Fn::Sub": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${self:service}-${sls:stage}-dlqMonitor*"
+                - Effect: Allow
+                  Action:
+                    - sqs:ReceiveMessage
+                    - sqs:DeleteMessage
+                    - sqs:ChangeMessageVisibility
+                    - sqs:GetQueueAttributes
+                  Resource:
+                    - { "Fn::GetAtt": [ "TaskDLQ", "Arn" ] }
+
+    DynamoDbPolicy:
+      Type: AWS::IAM::Policy
+      Properties:
+        PolicyName: ${self:service}-${sls:stage}-dynamodb
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource:
+                - { "Fn::GetAtt": [ "TasksTable", "Arn" ] }
+        Roles:
+          - { Ref: SubmitTaskRole }
+          - { Ref: ProcessTaskRole }
+          - { Ref: DlqMonitorRole }
+
+  Outputs:
+    TaskQueueUrl:
+      Description: URL of the main SQS task queue
+      Value: { Ref: TaskQueue }
+    TaskDLQUrl:
+      Description: URL of the DLQ
+      Value: { Ref: TaskDLQ }
+    TasksTableName:
+      Description: Name of the DynamoDB table
+      Value: { Ref: TasksTable }
