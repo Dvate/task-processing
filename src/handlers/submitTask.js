@@ -2,7 +2,7 @@ import { DynamoDB, SQS } from 'aws-sdk';
 const dynamodb = new DynamoDB.DocumentClient();
 const sqs = new SQS();
 
-const TABLE = process.env.TASKS_TABLE;
+const TABLE_NAME = process.env.TASKS_TABLE;
 const QUEUE_URL = process.env.TASK_QUEUE_URL;
 
 export async function handler(event) {
@@ -14,12 +14,13 @@ export async function handler(event) {
     const { taskId, payload } = body;
 
     await dynamodb.put({
-      TableName: TABLE,
+      TableName: TABLE_NAME,
       Item: {
         taskId,
         status: 'SUBMITTED',
         attempts: 0,
         payload,
+        error: null,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       },

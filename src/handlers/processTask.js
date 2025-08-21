@@ -4,7 +4,7 @@ const AWS = require("aws-sdk");
 const dynamodb = new AWS.DynamoDB.DocumentClient();
 const sqs = new AWS.SQS();
 
-const TABLE = process.env.TASKS_TABLE;
+const TABLE_NAME = process.env.TASKS_TABLE;
 const BACKOFF_BASE = parseInt(process.env.BACKOFF_BASE_SECONDS || "5", 10);
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || "2", 10);
 
@@ -22,7 +22,7 @@ exports.handler = async (event) => {
       try {
         const data = await dynamodb
           .update({
-            TableName: TABLE,
+            TableName: TABLE_NAME,
             Key: { taskId },
             UpdateExpression:
               "SET #status = :s, #updatedAt = :u, ADD #attempts :inc",
@@ -57,7 +57,7 @@ exports.handler = async (event) => {
         // Success path
         await dynamodb
           .update({
-            TableName: TABLE,
+            TableName: TABLE_NAME,
             Key: { taskId },
             UpdateExpression: "SET #status = :s, #updatedAt = :u",
             ExpressionAttributeNames: {
@@ -83,17 +83,19 @@ exports.handler = async (event) => {
         );
         await dynamodb
           .update({
-            TableName: TABLE,
+            TableName: TABLE_NAME,
             Key: { taskId },
             UpdateExpression:
-              "SET #status = :s, #updatedAt = :u",
+              "SET #status = :s, #updatedAt = :u, #error = :e",
             ExpressionAttributeNames: {
               "#status": "status",
               "#updatedAt": "updatedAt",
+              "#error": "error",
             },
             ExpressionAttributeValues: {
               ":s": "FAILED_FINAL",
               ":u": new Date().toISOString(),
+              ":e": `Max retries reached: ${attempts}`,
             },
           })
           .promise();
@@ -119,17 +121,19 @@ exports.handler = async (event) => {
       try {
         await dynamodb
           .update({
-            TableName: TABLE,
+            TableName: TABLE_NAME,
             Key: { taskId },
             UpdateExpression:
-              "SET #status = :s, #updatedAt = :u",
+              "SET #status = :s, #updatedAt = :u, #error = :e",
             ExpressionAttributeNames: {
               "#status": "status",
               "#updatedAt": "updatedAt",
+              "#error": "error",
             },
             ExpressionAttributeValues: {
               ":s": "FAILED_PENDING",
               ":u": new Date().toISOString(),
+              ":e": `Retrying task, attempt ${attempts}`,
             },
           })
           .promise();
