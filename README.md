@@ -12,6 +12,43 @@ Here is a simple diagram showing the flow:
 
 ---
 
+## ⚙️ Task Processing Logic
+
+- **processTask Lambda**  
+  - Fails task jobs **30% of the time** (controlled by `FAILURE_RATE` env var).  
+  - Implements **exponential backoff** by increasing message visibility timeout on retries.  
+  - Tasks succeed or fail after up to 3 attempts. On 3rd failed attempt task will land into DLQ
+
+**Task statuses in DB:**
+- ✅ `COMPLETED` – successfully processed tasks  
+- ❌ `FAILED_FINAL` – tasks that failed after 3 attempts (moved to DLQ) 
+- ❌ `FAILED_PENDING` – tasks that failed but no 3 attempts yet
+- 🔄 `PROCESSING` – task is currently running 
+- ℹ️ Each task also contains the **number of processing attempts**
+
+---
+
+## 🔄 Workflow
+
+1. **submitTask Lambda**  
+   - Invoked by API call  
+   - Stores the initial item in DynamoDB  
+   - Sends a message to `TaskQueue` (SQS)  
+
+2. **processTask Lambda**  
+   - Triggered by SQS
+   - Marks task as `PROCESSING`  
+   - Simulates 1s processing time  
+   - With 30% probability fails → retry with exponential backoff  
+   - After 3 failures → moves to DLQ  
+
+3. **monitorDlq Lambda**  
+   - Listens for messages in DLQ  
+   - Fetches task details from DynamoDB  
+   - Logs information, then deletes the message from DLQ  
+
+---
+
 ## 🚀 Deployment
 
 1. Clone the repository  
@@ -55,43 +92,6 @@ node test.js <API_URL> [count] [concurrency]
 ```bash
 node test.js https://5o1oxwgj3l.execute-api.eu-west-1.amazonaws.com/tasks 500 20
 ```
-
----
-
-## ⚙️ Task Processing Logic
-
-- **processTask Lambda**  
-  - Fails task jobs **30% of the time** (controlled by `FAILURE_RATE` env var).  
-  - Implements **exponential backoff** by increasing message visibility timeout on retries.  
-  - Tasks succeed or fail after up to 3 attempts. On 3rd failed attempt task will land into DLQ
-
-**Task statuses in DB:**
-- ✅ `COMPLETED` – successfully processed tasks  
-- ❌ `FAILED_FINAL` – tasks that failed after 3 attempts (moved to DLQ) 
-- ❌ `FAILED_PENDING` – tasks that failed but no 3 attempts yet
-- 🔄 `PROCESSING` – task is currently running 
-- ℹ️ Each task also contains the **number of processing attempts**
-
----
-
-## 🔄 Workflow
-
-1. **submitTask Lambda**  
-   - Invoked by API call  
-   - Stores the initial item in DynamoDB  
-   - Sends a message to `TaskQueue` (SQS)  
-
-2. **processTask Lambda**  
-   - Triggered by SQS
-   - Marks task as `PROCESSING`  
-   - Simulates 1s processing time  
-   - With 30% probability fails → retry with exponential backoff  
-   - After 3 failures → moves to DLQ  
-
-3. **monitorDlq Lambda**  
-   - Listens for messages in DLQ  
-   - Fetches task details from DynamoDB  
-   - Logs information, then deletes the message from DLQ  
 
 ---
 
