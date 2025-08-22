@@ -1,7 +1,8 @@
 const { DynamoDB, SQS } = require("aws-sdk");
-const dynamodb = DynamoDB.DocumentClient();
+const dynamodb = new DynamoDB.DocumentClient();
 const sqs = new SQS();
 
+const { TASK_QUEUE_URL } = process.env;
 const TABLE_NAME = process.env.TASKS_TABLE_NAME;
 const BACKOFF_BASE = parseInt(process.env.BACKOFF_BASE_SECONDS || "5", 10);
 const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || "2", 10);
@@ -36,7 +37,14 @@ exports.handler = async (event) => {
 };
 
 async function processRecord(record) {
-  const messageId = record.messageId;
+  const { messageId, receiptHandle } = record;
+
+  if (!record.body) {
+    console.error(`Record ${messageId} has no body, skipping processing`);
+    return;
+  }
+
+  // Parse the taskId from the record body
   const body = JSON.parse(record.body);
   const { taskId } = body;
   let attempts;
@@ -152,20 +160,16 @@ async function processRecord(record) {
 
   const delay = BACKOFF_BASE * Math.pow(2, attempts - 1);
 
-  try {
-    await sqs
-      .changeMessageVisibility({
-        QueueUrl: TASK_QUEUE_URL,
-        ReceiptHandle: receiptHandle,
-        VisibilityTimeout: delay,
-      })
-      .promise();
+  await sqs
+    .changeMessageVisibility({
+      QueueUrl: TASK_QUEUE_URL,
+      ReceiptHandle: receiptHandle,
+      VisibilityTimeout: delay,
+    })
+    .promise();
 
-    console.log(
-      `Task ${taskId} failed (attempt ${attempts}), will retry (messageId: ${messageId})`
-    );
-  } catch (err) {
-    console.error(`Failed to set visibility timeout for ${taskId}:`, err);
-    throw new Error(`Task ${taskId} processing failed on attempt ${attempts}`);
-  }
+  console.log(
+    `Task ${taskId} failed (attempt ${attempts}), will retry (messageId: ${messageId})`
+  );
+  throw new Error(`Task ${taskId} processing failed on attempt ${attempts}`);
 }
