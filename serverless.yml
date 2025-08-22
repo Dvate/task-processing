@@ -19,7 +19,6 @@ layers:
   awsSdkLayer:
     path: layers/aws-sdk
     name: ${self:service}-${sls:stage}-aws-sdk-layer
-    description: AWS SDK v2 # I know v2 is deprecated, I used it here for simplicity
     compatibleRuntimes:
       - nodejs20.x
     retain: false
