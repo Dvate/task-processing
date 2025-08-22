@@ -1,0 +1,17 @@
+{
+  "name": "speaknow",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "deploy": "serverless deploy",
+    "package": "serverless package",
+    "info": "serverless info"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "serverless": "^3.38.0"
+  }
+}
