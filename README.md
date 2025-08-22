@@ -12,22 +12,6 @@ Here is a simple diagram showing the flow:
 
 ---
 
-## ⚙️ Task Processing Logic
-
-- **processTask Lambda**  
-  - Fails task jobs **30% of the time** (controlled by `FAILURE_RATE` env var).  
-  - Implements **exponential backoff** by increasing message visibility timeout on retries.  
-  - Tasks succeed or fail after up to 3 attempts. On 3rd failed attempt task will land into DLQ
-
-**Task statuses in DB:**
-- ✅ `COMPLETED` – successfully processed tasks  
-- ❌ `FAILED_FINAL` – tasks that failed after 3 attempts (moved to DLQ) 
-- ❌ `FAILED_PENDING` – tasks that failed but no 3 attempts yet
-- 🔄 `PROCESSING` – task is currently running 
-- ℹ️ Each task also contains the **number of processing attempts**
-
----
-
 ## 🔄 Workflow
 
 1. **submitTask Lambda**  
@@ -46,6 +30,22 @@ Here is a simple diagram showing the flow:
    - Listens for messages in DLQ  
    - Fetches task details from DynamoDB  
    - Logs information, then deletes the message from DLQ  
+
+---
+
+## ⚙️ Task Processing Logic
+
+- **processTask Lambda**  
+  - Fails task jobs **30% of the time** (controlled by `FAILURE_RATE` env var).  
+  - Implements **exponential backoff** by increasing message visibility timeout on retries.  
+  - Tasks succeed or fail after up to 3 attempts. On 3rd failed attempt task will land into DLQ
+
+**Task statuses in DB:**
+- ✅ `COMPLETED` – successfully processed tasks  
+- ❌ `FAILED_FINAL` – tasks that failed after 3 attempts (moved to DLQ) 
+- ❌ `FAILED_PENDING` – tasks that failed but no 3 attempts yet
+- 🔄 `PROCESSING` – task is currently running 
+- ℹ️ Each task also contains the **number of processing attempts**
 
 ---
 
