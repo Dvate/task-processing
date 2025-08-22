@@ -135,6 +135,11 @@ resources:
                     - sqs:GetQueueAttributes
                   Resource:
                     - { "Fn::GetAtt": [ "TaskQueue", "Arn" ] }
+                - Effect: Allow
+                  Action:
+                    - dynamodb:PutItem
+                  Resource:
+                    - { "Fn::GetAtt": [ "TasksTable", "Arn" ] }
 
     ProcessTaskRole:
       Type: AWS::IAM::Role
@@ -167,6 +172,12 @@ resources:
                     - sqs:GetQueueAttributes
                   Resource:
                     - { "Fn::GetAtt": [ "TaskQueue", "Arn" ] }
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                    - dynamodb:UpdateItem
+                  Resource:
+                    - { "Fn::GetAtt": [ "TasksTable", "Arn" ] }
 
     DlqMonitorRole:
       Type: AWS::IAM::Role
@@ -199,25 +210,11 @@ resources:
                     - sqs:GetQueueAttributes
                   Resource:
                     - { "Fn::GetAtt": [ "TaskDLQ", "Arn" ] }
-
-    DynamoDbPolicy:
-      Type: AWS::IAM::Policy
-      Properties:
-        PolicyName: ${self:service}-${sls:stage}-dynamodb
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - dynamodb:GetItem
-                - dynamodb:PutItem
-                - dynamodb:UpdateItem
-              Resource:
-                - { "Fn::GetAtt": [ "TasksTable", "Arn" ] }
-        Roles:
-          - { Ref: SubmitTaskRole }
-          - { Ref: ProcessTaskRole }
-          - { Ref: DlqMonitorRole }
+                - Effect: Allow
+                  Action:
+                    - dynamodb:GetItem
+                  Resource:
+                    - { "Fn::GetAtt": [ "TasksTable", "Arn" ] }
 
   Outputs:
     TaskQueueUrl:
