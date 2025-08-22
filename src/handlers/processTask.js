@@ -91,14 +91,16 @@ async function processRecord(record) {
       .update({
         TableName: TABLE_NAME,
         Key: { taskId },
-        UpdateExpression: "SET #status = :s, #updatedAt = :u",
+        UpdateExpression: "SET #status = :s, #updatedAt = :u, #error = :e",
         ExpressionAttributeNames: {
           "#status": "status",
           "#updatedAt": "updatedAt",
+          "#error": "error",
         },
         ExpressionAttributeValues: {
           ":s": "COMPLETED",
           ":u": new Date().toISOString(),
+          ":e": null,
         },
       })
       .promise();
