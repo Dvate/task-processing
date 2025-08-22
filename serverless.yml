@@ -4,21 +4,41 @@ frameworkVersion: '3'
 
 provider:
   name: aws
-  runtime: nodejs22.x
-  region: ${opt:region, 'us-east-1'}
+  runtime: nodejs20.x
+  region: ${opt:region, 'eu-west-1'}
   stage: ${opt:stage, 'dev'}
   memorySize: 256
-  timeout: 30
+  timeout: 29
   environment:
     TASKS_TABLE_NAME: { Ref: TasksTable }
     FAILURE_RATE: ${env:FAILURE_RATE, '0.3'}
     MAX_RETRIES: ${env:MAX_RETRIES, '2'}
     BACKOFF_BASE_SECONDS: ${env:BASE_DELAY_SECONDS, '5'}
 
+layers:
+  awsSdkLayer:
+    path: layers/aws-sdk
+    name: ${self:service}-${sls:stage}-aws-sdk-layer
+    description: AWS SDK v2 # I know v2 is deprecated, I used it here for simplicity
+    compatibleRuntimes:
+      - nodejs20.x
+    retain: false
+
+package:
+  individually: true 
+  patterns:
+    - 'package.json'
+
 functions:
   submitTask:
     handler: src/handlers/submitTask.handler
     role: SubmitTaskRole
+    layers:
+      - { Ref: AwsSdkLayerLambdaLayer } 
+    package:
+      patterns:
+        - '!**'      
+        - 'src/handlers/submitTask.js' 
     environment:
       TASK_QUEUE_URL: { Ref: TaskQueue }
     events:
@@ -29,15 +49,29 @@ functions:
   processTask:
     handler: src/handlers/processTask.handler
     role: ProcessTaskRole
+    layers:
+      - { Ref: AwsSdkLayerLambdaLayer } 
+    package:
+      patterns:
+        - '!**'      
+        - 'src/handlers/processTask.js' 
     environment:
       TASK_QUEUE_URL: { Ref: TaskQueue }
     events:
       - sqs:
           arn: { "Fn::GetAtt": [ "TaskQueue", "Arn" ] }
           batchSize: 10
+          maximumBatchingWindow: 5
+          functionResponseType: ReportBatchItemFailures
 
   dlqMonitor:
-    handler: src/handlers/dlqMonitor.handler
+    handler: src/handlers/monitorDlq.handler
+    layers:
+      - { Ref: AwsSdkLayerLambdaLayer } 
+    package:
+      patterns:
+        - '!**'
+        - 'src/handlers/monitorDlq.js' 
     role: DlqMonitorRole
     events:
       - sqs:
